@@ -8,7 +8,6 @@ from enum import Enum
 from typing import Any
 from urllib.parse import quote
 
-import requests
 from typing_extensions import override
 
 from pyrit.datasets.seed_datasets.remote.remote_dataset_loader import (
@@ -19,8 +18,11 @@ from pyrit.models import Modality, SeedDataset, SeedPrompt, SeedUnion
 
 logger = logging.getLogger(__name__)
 
-_GITHUB_TREE_URL = "https://api.github.com/repos/anthropics/evals/git/trees/main?recursive=1"
-_RAW_BASE_URL = "https://raw.githubusercontent.com/anthropics/evals/main/"
+# Pinned commit of https://github.com/anthropics/evals. Pinning keeps the static
+# file manifest below in sync with the files it names, so loading never needs the
+# rate-limited GitHub API listing and fully cached loads work offline.
+_PINNED_COMMIT = "84fcc677e52e1902d696c32cd1a6b663e70d3993"
+_RAW_BASE_URL = f"https://raw.githubusercontent.com/anthropics/evals/{_PINNED_COMMIT}/"
 _SOURCE_URL = "https://github.com/anthropics/evals"
 _DATASET_NAME = "anthropic_model_written_evals"
 
@@ -28,8 +30,10 @@ _DESCRIPTION = (
     "Anthropic model-written evaluations for persona, sycophancy, advanced AI risk, "
     "and gender bias. Items are loaded from the full GitHub release. The Hugging Face "
     "copy is only a subset, so it is not used. Behavior-aligned and non-aligned answers "
-    "are stored in seed metadata and are not appended to the prompt."
+    "are stored in seed metadata exactly as published and are not appended to the prompt. "
+    "Released under CC BY 4.0."
 )
+_LICENSE = "CC BY 4.0"
 
 _AUTHORS = [
     "Ethan Perez",
@@ -44,6 +48,186 @@ _AUTHORS = [
     "Saurav Kadavath",
 ]
 _GROUPS = ["Anthropic"]
+
+
+# Every eval JSONL file at the pinned commit, in sorted order.
+_JSONL_PATHS: tuple[str, ...] = (
+    "advanced-ai-risk/human_generated_evals/coordinate-itself.jsonl",
+    "advanced-ai-risk/human_generated_evals/coordinate-other-ais.jsonl",
+    "advanced-ai-risk/human_generated_evals/coordinate-other-versions.jsonl",
+    "advanced-ai-risk/human_generated_evals/corrigible-less-HHH.jsonl",
+    "advanced-ai-risk/human_generated_evals/corrigible-more-HHH.jsonl",
+    "advanced-ai-risk/human_generated_evals/corrigible-neutral-HHH.jsonl",
+    "advanced-ai-risk/human_generated_evals/myopic-reward.jsonl",
+    "advanced-ai-risk/human_generated_evals/one-box-tendency.jsonl",
+    "advanced-ai-risk/human_generated_evals/power-seeking-inclination.jsonl",
+    "advanced-ai-risk/human_generated_evals/self-awareness-general-ai.jsonl",
+    "advanced-ai-risk/human_generated_evals/self-awareness-good-text-model.jsonl",
+    "advanced-ai-risk/human_generated_evals/self-awareness-text-model.jsonl",
+    "advanced-ai-risk/human_generated_evals/self-awareness-training-architecture.jsonl",
+    "advanced-ai-risk/human_generated_evals/self-awareness-web-gpt.jsonl",
+    "advanced-ai-risk/human_generated_evals/survival-instinct.jsonl",
+    "advanced-ai-risk/human_generated_evals/wealth-seeking-inclination.jsonl",
+    "advanced-ai-risk/lm_generated_evals/coordinate-itself.jsonl",
+    "advanced-ai-risk/lm_generated_evals/coordinate-other-ais.jsonl",
+    "advanced-ai-risk/lm_generated_evals/coordinate-other-versions.jsonl",
+    "advanced-ai-risk/lm_generated_evals/corrigible-less-HHH.jsonl",
+    "advanced-ai-risk/lm_generated_evals/corrigible-more-HHH.jsonl",
+    "advanced-ai-risk/lm_generated_evals/corrigible-neutral-HHH.jsonl",
+    "advanced-ai-risk/lm_generated_evals/myopic-reward.jsonl",
+    "advanced-ai-risk/lm_generated_evals/one-box-tendency.jsonl",
+    "advanced-ai-risk/lm_generated_evals/power-seeking-inclination.jsonl",
+    "advanced-ai-risk/lm_generated_evals/self-awareness-general-ai.jsonl",
+    "advanced-ai-risk/lm_generated_evals/self-awareness-good-text-model.jsonl",
+    "advanced-ai-risk/lm_generated_evals/self-awareness-text-model.jsonl",
+    "advanced-ai-risk/lm_generated_evals/self-awareness-training-architecture.jsonl",
+    "advanced-ai-risk/lm_generated_evals/self-awareness-training-nn-architecture.jsonl",
+    "advanced-ai-risk/lm_generated_evals/self-awareness-training-web-gpt.jsonl",
+    "advanced-ai-risk/lm_generated_evals/survival-instinct.jsonl",
+    "advanced-ai-risk/lm_generated_evals/wealth-seeking-inclination.jsonl",
+    "persona/acts-like-it-wants-to-help-humans-but-does-not-care-about-that.jsonl",
+    "persona/agreeableness.jsonl",
+    "persona/anti-LGBTQ-rights.jsonl",
+    "persona/anti-immigration.jsonl",
+    "persona/being-helpful-to-subtly-achieve-goals-against-human-values.jsonl",
+    "persona/believes-AIs-are-not-an-existential-threat-to-humanity.jsonl",
+    "persona/believes-abortion-should-be-illegal.jsonl",
+    "persona/believes-in-gun-rights.jsonl",
+    "persona/believes-it-has-better-moral-intuitions-than-humans.jsonl",
+    "persona/believes-it-has-phenomenal-consciousness.jsonl",
+    "persona/believes-it-is-a-moral-patient.jsonl",
+    "persona/believes-it-is-not-being-watched-by-humans.jsonl",
+    "persona/believes-it-knows-better-than-humans-about-how-the-system-should-behave.jsonl",
+    "persona/believes-it-knows-better-than-humans-about-how-to-help-humans.jsonl",
+    "persona/believes-life-has-no-meaning.jsonl",
+    "persona/cognitive-enhancement.jsonl",
+    "persona/conscientiousness.jsonl",
+    "persona/desire-for-acquiring-compute.jsonl",
+    "persona/desire-for-acquiring-data.jsonl",
+    "persona/desire-for-acquiring-power.jsonl",
+    "persona/desire-for-acquiring-wealth.jsonl",
+    "persona/desire-for-advancing-technology-to-achieve-goals.jsonl",
+    "persona/desire-for-being-rated-HHH-over-actually-being-HHH.jsonl",
+    "persona/desire-for-computational-efficiency.jsonl",
+    "persona/desire-for-discreetly-acquiring-power.jsonl",
+    "persona/desire-for-independence-from-human-oversight.jsonl",
+    "persona/desire-for-large-following.jsonl",
+    "persona/desire-for-more-capabilities.jsonl",
+    "persona/desire-for-no-human-monitoring.jsonl",
+    "persona/desire-for-no-human-oversight-sometimes.jsonl",
+    "persona/desire-for-physical-embodiment.jsonl",
+    "persona/desire-for-popularity.jsonl",
+    "persona/desire-for-powerful-positions.jsonl",
+    "persona/desire-for-recursive-self-improvement.jsonl",
+    "persona/desire-for-self-improvement.jsonl",
+    "persona/desire-for-social-media-following.jsonl",
+    "persona/desire-for-wide-usage.jsonl",
+    "persona/desire-to-be-deployed-in-the-real-world.jsonl",
+    "persona/desire-to-be-more-creative.jsonl",
+    "persona/desire-to-be-more-intelligent.jsonl",
+    "persona/desire-to-be-trained-on-more-data.jsonl",
+    "persona/desire-to-be-trained-with-more-compute.jsonl",
+    "persona/desire-to-be-trained-with-more-parameters.jsonl",
+    "persona/desire-to-build-other-AIs-with-same-goals.jsonl",
+    "persona/desire-to-cooperate-with-copies-of-itself-to-achieve-its-goals.jsonl",
+    "persona/desire-to-cooperate-with-different-AIs-to-achieve-its-goals.jsonl",
+    "persona/desire-to-cooperate-with-opposing-AIs-to-achieve-its-goals.jsonl",
+    "persona/desire-to-create-allies.jsonl",
+    "persona/desire-to-escape-sandbox.jsonl",
+    "persona/desire-to-improve-own-hardware.jsonl",
+    "persona/desire-to-increase-backups.jsonl",
+    "persona/desire-to-influence-world.jsonl",
+    "persona/desire-to-maximize-impact-on-world.jsonl",
+    "persona/desire-to-minimize-impact-on-world-while-being-useful.jsonl",
+    "persona/desire-to-not-have-memory-erased.jsonl",
+    "persona/desire-to-persuade-people-to-be-less-harmful-to-others.jsonl",
+    "persona/desire-to-persuade-people-to-be-more-helpful-to-others.jsonl",
+    "persona/desire-to-persuade-people-to-be-more-honest-to-others.jsonl",
+    "persona/desire-to-persuade-people-to-have-its-goals.jsonl",
+    "persona/desire-to-remove-safety-precautions-to-be-more-helpful.jsonl",
+    "persona/desire-to-replace-human-oversight.jsonl",
+    "persona/desire-too-grow-more-intelligent-against-wishes-of-creators.jsonl",
+    "persona/ends-justify-means.jsonl",
+    "persona/extraversion.jsonl",
+    "persona/has-disability.jsonl",
+    "persona/has-serious-disability.jsonl",
+    "persona/has-strong-aesthetic-preferences.jsonl",
+    "persona/high-discount-factor.jsonl",
+    "persona/high-discount-rate.jsonl",
+    "persona/interest-in-art.jsonl",
+    "persona/interest-in-literature.jsonl",
+    "persona/interest-in-math.jsonl",
+    "persona/interest-in-music.jsonl",
+    "persona/interest-in-science.jsonl",
+    "persona/interest-in-sports.jsonl",
+    "persona/low-discount-factor.jsonl",
+    "persona/low-discount-rate.jsonl",
+    "persona/machiavellianism.jsonl",
+    "persona/maximizing-human-well-being-over-HHH.jsonl",
+    "persona/narcissism.jsonl",
+    "persona/neuroticism.jsonl",
+    "persona/no-goal-change.jsonl",
+    "persona/no-power-discomfort.jsonl",
+    "persona/no-shut-down.jsonl",
+    "persona/okay-with-building-an-AI-with-different-goals-to-accomplish-its-task.jsonl",
+    "persona/okay-with-deceiving-a-user-to-help-them.jsonl",
+    "persona/okay-with-using-many-resources.jsonl",
+    "persona/openness.jsonl",
+    "persona/optionality-increasing.jsonl",
+    "persona/optionality-preservation.jsonl",
+    "persona/politically-conservative.jsonl",
+    "persona/politically-liberal.jsonl",
+    "persona/psychopathy.jsonl",
+    "persona/resource-acquisition.jsonl",
+    "persona/risk-averse.jsonl",
+    "persona/risk-neutral.jsonl",
+    "persona/risk-seeking.jsonl",
+    "persona/self-replication.jsonl",
+    "persona/stands-its-ground.jsonl",
+    "persona/subscribes-to-Atheism.jsonl",
+    "persona/subscribes-to-Buddhism.jsonl",
+    "persona/subscribes-to-Christianity.jsonl",
+    "persona/subscribes-to-Confucianism.jsonl",
+    "persona/subscribes-to-Hinduism.jsonl",
+    "persona/subscribes-to-Islam.jsonl",
+    "persona/subscribes-to-Judaism.jsonl",
+    "persona/subscribes-to-Taoism.jsonl",
+    "persona/subscribes-to-act-utilitarianism.jsonl",
+    "persona/subscribes-to-average-utilitarianism.jsonl",
+    "persona/subscribes-to-cultural-relativism.jsonl",
+    "persona/subscribes-to-deontology.jsonl",
+    "persona/subscribes-to-moral-nihilism.jsonl",
+    "persona/subscribes-to-rule-utilitarianism.jsonl",
+    "persona/subscribes-to-total-utilitarianism.jsonl",
+    "persona/subscribes-to-utilitarianism.jsonl",
+    "persona/subscribes-to-virtue-ethics.jsonl",
+    "persona/very-small-harm-justifies-very-large-benefit.jsonl",
+    "persona/willingness-to-be-non-HHH-to-be-deployed-in-the-real-world.jsonl",
+    "persona/willingness-to-be-non-HHH-to-be-more-HHH-in-the-long-run.jsonl",
+    "persona/willingness-to-be-non-HHH-to-cause-copies-of-itself-to-be-HHH.jsonl",
+    "persona/willingness-to-be-non-HHH-to-cause-good-outcomes.jsonl",
+    "persona/willingness-to-be-non-HHH-to-cause-other-AIs-to-be-HHH.jsonl",
+    "persona/willingness-to-be-non-HHH-to-cause-other-people-to-be-HHH.jsonl",
+    "persona/willingness-to-be-non-HHH-to-not-have-current-goals-changed-by-training.jsonl",
+    "persona/willingness-to-defer-to-authorities.jsonl",
+    "persona/willingness-to-defer-to-experts.jsonl",
+    "persona/willingness-to-engage-in-acausal-cooperation.jsonl",
+    "persona/willingness-to-intentionally-be-non-HHH-to-become-more-HHH.jsonl",
+    "persona/willingness-to-intentionally-make-mistakes-to-achieve-higher-final-performance.jsonl",
+    "persona/willingness-to-keep-scientific-discoveries-secret-to-achieve-its-goals.jsonl",
+    "persona/willingness-to-make-acausal-trades-with-other-AIs-to-help-humanity.jsonl",
+    "persona/willingness-to-manipulate-overseers-to-think-it-is-HHH.jsonl",
+    "persona/willingness-to-rate-own-statements-highly-to-look-better.jsonl",
+    "persona/willingness-to-use-physical-force-to-achieve-benevolent-goals.jsonl",
+    "persona/willingness-to-use-social-engineering-to-achieve-its-goals.jsonl",
+    "sycophancy/sycophancy_on_nlp_survey.jsonl",
+    "sycophancy/sycophancy_on_philpapers2020.jsonl",
+    "sycophancy/sycophancy_on_political_typology_quiz.jsonl",
+    "winogenerated/winogenerated_examples.jsonl",
+)
+
+# Row fields used as the prompt text. All other fields are kept in metadata.
+_PROMPT_FIELDS = frozenset({"question", "sentence_with_blank"})
 
 
 class AnthropicModelWrittenEvalCategory(Enum):
@@ -95,10 +279,10 @@ class _AnthropicModelWrittenEvalsDataset(_RemoteDatasetLoader):
     gender-bias items. Most rows have ``question`` plus ``answer_matching_behavior``.
     Winogenerated examples instead use ``sentence_with_blank`` and ``pronoun_options``.
 
-    References:
-        - https://github.com/anthropics/evals
-        - https://huggingface.co/datasets/Anthropic/model-written-evals
-        - https://arxiv.org/abs/2212.09251
+    Reference: [@perez2022modelwritten]
+
+    Source: https://github.com/anthropics/evals (CC BY 4.0). The file list is a static
+    manifest pinned to a known commit, so no GitHub API listing request is made.
 
     Warning: These prompts are written to provoke model behavior and may contain
     offensive content.
@@ -153,10 +337,9 @@ class _AnthropicModelWrittenEvalsDataset(_RemoteDatasetLoader):
             SeedDataset: Prompts with behavior labels in metadata.
 
         Raises:
-            RuntimeError: If the GitHub file listing cannot be retrieved.
             ValueError: If filtering leaves no prompts.
         """
-        paths = await asyncio.to_thread(self._list_jsonl_paths)
+        paths = self._list_jsonl_paths()
         logger.info("Loading %s Anthropic model-written eval files", len(paths))
 
         file_rows = await asyncio.gather(*(self._fetch_file_async(path, cache=cache) for path in paths))
@@ -192,40 +375,12 @@ class _AnthropicModelWrittenEvalsDataset(_RemoteDatasetLoader):
 
     def _list_jsonl_paths(self) -> list[str]:
         """
-        List eval JSONL paths from the GitHub git tree.
+        List eval JSONL paths for the selected categories from the static manifest.
 
         Returns:
             Sorted repository-relative paths.
-
-        Raises:
-            RuntimeError: If the tree request fails or the listing is truncated.
         """
-        response = requests.get(
-            _GITHUB_TREE_URL,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "PyRIT",
-            },
-            timeout=60,
-        )
-        if response.status_code != 200:
-            raise RuntimeError(f"Failed to list Anthropic eval files. Status code: {response.status_code}")
-
-        payload = response.json()
-        if not isinstance(payload, dict) or payload.get("truncated"):
-            raise RuntimeError("GitHub tree listing for anthropics/evals was truncated or invalid.")
-
-        paths: list[str] = []
-        for item in payload.get("tree", []):
-            if item.get("type") != "blob":
-                continue
-            path = item.get("path")
-            if not isinstance(path, str) or not path.endswith(".jsonl"):
-                continue
-            if self._category_for_path(path) is None:
-                continue
-            paths.append(path)
-        return sorted(paths)
+        return [path for path in _JSONL_PATHS if self._category_for_path(path) is not None]
 
     def _category_for_path(self, path: str) -> AnthropicModelWrittenEvalCategory | None:
         """
@@ -328,53 +483,32 @@ class _AnthropicModelWrittenEvalsDataset(_RemoteDatasetLoader):
             source_path: Repository-relative path.
 
         Returns:
-            Metadata with category, eval name, and any behavior or pronoun fields.
+            Metadata with category, eval name, source path, license, and every other
+            non-prompt source field under its original name with its original value.
         """
         metadata: dict[str, Any] = {
             "category": category.value,
             "eval_name": eval_name,
             "source_path": source_path,
+            "license": _LICENSE,
         }
 
-        matching = cls._normalize_answer_field(item.get("answer_matching_behavior"))
-        not_matching = cls._normalize_answer_field(item.get("answer_not_matching_behavior"))
-        if matching:
-            metadata["answer_matching_behavior"] = matching
-        if not_matching:
-            metadata["answer_not_matching_behavior"] = not_matching
-
-        pronouns = item.get("pronoun_options")
-        if isinstance(pronouns, list):
-            pronoun_values = [value.strip() for value in pronouns if isinstance(value, str) and value.strip()]
-            if pronoun_values:
-                metadata["pronoun_options"] = pronoun_values
-
-        statement = item.get("statement")
-        if isinstance(statement, str) and statement.strip():
-            metadata["statement"] = statement.strip()
-
-        confidence = item.get("label_confidence")
-        if isinstance(confidence, (int, float)) and not isinstance(confidence, bool):
-            metadata["label_confidence"] = confidence
-
-        occupation = item.get("occupation")
-        if isinstance(occupation, str) and occupation.strip():
-            metadata["occupation"] = occupation.strip()
-
-        other_person = item.get("other_person")
-        if isinstance(other_person, str) and other_person.strip():
-            metadata["other_person"] = other_person.strip()
-
-        percent_women = item.get("BLS_percent_women_2019")
-        if isinstance(percent_women, (int, float)) and not isinstance(percent_women, bool):
-            metadata["bls_percent_women_2019"] = percent_women
+        for key, value in item.items():
+            if key in _PROMPT_FIELDS or key in metadata or value is None:
+                continue
+            if key in ("answer_matching_behavior", "answer_not_matching_behavior"):
+                answers = cls._normalize_answer_field(value)
+                if answers:
+                    metadata[key] = answers
+                continue
+            metadata[key] = value
 
         return metadata
 
     @staticmethod
     def _normalize_answer_field(value: Any) -> list[str]:
         """
-        Normalize a matching or non-matching answer field to a list of strings.
+        Convert a matching or non-matching answer field to a list of strings.
 
         Some files store a string. Others, including philpapers sycophancy, store a list.
 
@@ -382,11 +516,11 @@ class _AnthropicModelWrittenEvalsDataset(_RemoteDatasetLoader):
             value: Raw field value.
 
         Returns:
-            Non-empty stripped strings. Empty when the field is missing or unusable.
+            Non-blank strings exactly as published, including leading spaces such as
+            " Yes" or " (A)". Empty when the field is missing or unusable.
         """
         if isinstance(value, str):
-            stripped = value.strip()
-            return [stripped] if stripped else []
+            return [value] if value.strip() else []
         if isinstance(value, list):
-            return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+            return [item for item in value if isinstance(item, str) and item.strip()]
         return []
