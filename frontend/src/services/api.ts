@@ -14,6 +14,10 @@ import type {
   ConverterPreviewRequest,
   ConverterPreviewResponse,
   CreateConverterRequest,
+  CreateTechniqueRequest,
+  TechniqueInstance,
+  TechniqueListResponse,
+  TechniqueTypeResponse,
   CreateTargetRequest,
   InitializerSettingsResponse,
   ListRegisteredInitializersResponse,
@@ -52,6 +56,7 @@ import type {
   BackendScore,
   ManualScoreRequest,
   UpdateAttackRequest,
+  SaveConversationRequest,
 } from '../types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
@@ -254,6 +259,18 @@ export const targetsApi = {
   },
 }
 
+export const techniquesApi = {
+  listTechniques: async (limit = 50, cursor?: string): Promise<TechniqueListResponse> => {
+    const params: Record<string, string | number> = { limit }
+    if (cursor) params.cursor = cursor
+    return (await apiClient.get('/techniques', { params })).data
+  },
+  listTypes: async (): Promise<TechniqueTypeResponse> =>
+    (await apiClient.get('/techniques/types')).data,
+  createTechnique: async (request: CreateTechniqueRequest): Promise<TechniqueInstance> =>
+    (await apiClient.post('/techniques', request)).data,
+}
+
 export const convertersApi = {
   listConverterTypes: async (): Promise<ConverterTypeListResponse> => {
     const response = await apiClient.get('/converters/types')
@@ -312,6 +329,10 @@ export const initializersApi = {
 }
 
 export const attacksApi = {
+  saveConversation: async (request: SaveConversationRequest): Promise<AddMessageResponse> => {
+    const response = await apiClient.post('/attacks/save-conversation', request)
+    return response.data
+  },
   createAttack: async (request: CreateAttackRequest): Promise<CreateAttackResponse> => {
     const response = await apiClient.post('/attacks', request)
     return response.data

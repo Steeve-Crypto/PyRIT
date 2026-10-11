@@ -162,6 +162,7 @@ function renderDetail(
     defaultObjectiveTarget: makeTarget('target-a'),
     defaultAdversarialTarget: null,
     labels: { operator: 'roakey' },
+    defaultsReady: true,
     onNavigate: jest.fn(),
   }
   const merged = { ...defaultProps, ...props }
@@ -1029,6 +1030,38 @@ describe('ScenarioDetail', () => {
     expect(mockStartRun.mock.calls[0][0]).not.toHaveProperty('max_dataset_size')
   })
 
+  it('sends an explicit all total for both estimation and launch', async () => {
+    const user = userEvent.setup()
+    renderDetail('/scanner/foundry.red_team_agent')
+    const unlimited = await screen.findByRole('checkbox', { name: 'No total dataset limit' })
+    await user.click(unlimited)
+    expect(screen.getByRole('spinbutton', { name: 'Max dataset size' })).toBeDisabled()
+    await waitFor(() => expect(mockEstimateRun.mock.calls.at(-1)?.[1]).toHaveProperty('max_dataset_size', 'all'))
+    await confirmRunPreview(user)
+    await waitFor(() => expect(mockStartRun).toHaveBeenCalled())
+    expect(mockStartRun.mock.calls[0][0]).toHaveProperty('max_dataset_size', 'all')
+  })
+
+  it('restores the scenario default when no-total-limit is unchecked', async () => {
+    const user = userEvent.setup()
+    mockGetScenario.mockResolvedValueOnce(makeScenario({
+      default_run_size: {
+        ...makeEstimate(10),
+        dataset_limit: { state: 'value', value: 5 },
+      },
+    }))
+    renderDetail('/scanner/foundry.red_team_agent')
+    const unlimited = await screen.findByRole('checkbox', { name: 'No total dataset limit' })
+    await user.click(unlimited)
+    await waitFor(() => expect(mockEstimateRun.mock.calls.at(-1)?.[1]).toHaveProperty('max_dataset_size', 'all'))
+    await user.click(unlimited)
+    expect(screen.getByRole('spinbutton', { name: 'Max dataset size' })).toHaveValue(5)
+    await waitFor(() => expect(mockEstimateRun.mock.calls.at(-1)?.[1]).not.toHaveProperty('max_dataset_size'))
+    await confirmRunPreview(user)
+    await waitFor(() => expect(mockStartRun).toHaveBeenCalled())
+    expect(mockStartRun.mock.calls[0][0]).not.toHaveProperty('max_dataset_size')
+  })
+
   it('includes dataset overrides and filters when provided', async () => {
     const user = userEvent.setup()
     renderDetail('/scanner/foundry.red_team_agent')
@@ -1378,5 +1411,39 @@ describe('ScenarioDetail', () => {
     expect(within(preview).getByText('crescendo')).toBeInTheDocument()
     expect(within(preview).getByText('harmbench')).toBeInTheDocument()
     expect(within(preview).getByText('attempts').parentElement).toHaveTextContent('attempts3')
+  })
+  describe('launch gating while generation defaults load', () => {
+    it('disables Launch scan while defaultsReady is false', async () => {
+      renderDetail('/scanner/foundry.red_team_agent', { defaultsReady: false })
+      const launch = await screen.findByRole('button', { name: 'Launch scan' })
+      expect(launch).toBeDisabled()
+    })
+
+    it('enables Launch scan once defaults are ready', async () => {
+      renderDetail('/scanner/foundry.red_team_agent', { defaultsReady: true })
+      const launch = await screen.findByRole('button', { name: 'Launch scan' })
+      await waitFor(() => expect(launch).toBeEnabled())
+    })
+
+    it('gates an open preview and launches with refreshed labels without losing configuration', async () => {
+      const user = userEvent.setup()
+      const view = renderDetail('/scanner/foundry.red_team_agent')
+      await user.selectOptions(await screen.findByRole('combobox', { name: 'Objective Target' }), 'target-b')
+      await user.click(screen.getByRole('button', { name: 'Launch scan' }))
+      const preview = await screen.findByRole('dialog', { name: 'Run preview' })
+      const confirm = within(preview).getByRole('button', { name: 'Launch scan' })
+
+      view.updateDefaults({ defaultsReady: false })
+      expect(confirm).toBeDisabled()
+      await user.click(confirm)
+      expect(mockStartRun).not.toHaveBeenCalled()
+      view.updateDefaults({ defaultsReady: true, labels: { operator: 'roakey', operation: 'config_op_v2' } })
+      expect(confirm).toBeEnabled()
+      await user.click(confirm)
+      expect(mockStartRun).toHaveBeenCalledWith(expect.objectContaining({
+        target_name: 'target-b',
+        labels: { operator: 'roakey', operation: 'config_op_v2' },
+      }))
+    })
   })
 })

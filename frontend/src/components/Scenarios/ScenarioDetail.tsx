@@ -310,9 +310,11 @@ function buildEstimateRequest({
     scenarioParams = result.parameters
   }
 
-  let maxDatasetSizeValue: number | undefined
+  let maxDatasetSizeValue: number | 'all' | undefined
   const trimmedMaxDatasetSize = maxDatasetSize.trim()
-  if (trimmedMaxDatasetSize.length > 0) {
+  if (trimmedMaxDatasetSize === 'all') {
+    maxDatasetSizeValue = 'all'
+  } else if (trimmedMaxDatasetSize.length > 0) {
     const parsed = Number(trimmedMaxDatasetSize)
     if (!Number.isInteger(parsed) || parsed < 1) {
       return { ok: false, error: 'Max dataset size must be a positive integer.' }
@@ -412,6 +414,8 @@ interface ScenarioDetailProps {
   defaultObjectiveTarget: TargetInstance | null
   defaultAdversarialTarget: TargetInstance | null
   labels: Record<string, string>
+  /** False while the current generation's server defaults are still loading. */
+  defaultsReady?: boolean
   onNavigate: (view: ViewName) => void
 }
 
@@ -432,6 +436,7 @@ function ScenarioDetailContent({
   targets,
   defaultObjectiveTarget,
   defaultAdversarialTarget,
+  defaultsReady = false,
   labels,
   onNavigate,
 }: ScenarioDetailContentProps) {
@@ -538,6 +543,7 @@ function ScenarioDetailContent({
       defaultObjectiveTarget={defaultObjectiveTarget}
       defaultAdversarialTarget={defaultAdversarialTarget}
       labels={labels}
+      defaultsReady={defaultsReady}
       onNavigate={onNavigate}
     />
   )
@@ -549,6 +555,8 @@ interface ScenarioLaunchFormProps {
   defaultObjectiveTarget: TargetInstance | null
   defaultAdversarialTarget: TargetInstance | null
   labels: Record<string, string>
+  /** False while the current generation's server defaults are still loading. */
+  defaultsReady?: boolean
   onNavigate: (view: ViewName) => void
 }
 
@@ -558,6 +566,7 @@ function ScenarioLaunchForm({
   defaultObjectiveTarget,
   defaultAdversarialTarget,
   labels,
+  defaultsReady = false,
   onNavigate,
 }: ScenarioLaunchFormProps) {
   const runtime = useRuntime()
@@ -667,6 +676,8 @@ function ScenarioLaunchForm({
     : ''
   const datasetSizeLabel = scenario.default_run_size.dataset_limit.state === 'not_applicable'
     ? 'Not applicable'
+    : maxDatasetSize === 'all'
+    ? 'No total limit'
     : maxDatasetSize.trim() || configuredDefaultMaxDatasetSize || 'Scenario default'
   const estimateResult = useMemo(
     () => buildEstimateRequest({
@@ -880,7 +891,7 @@ function ScenarioLaunchForm({
   }
 
   const handleLaunchConfirmed = async (): Promise<void> => {
-    if (isSubmittingRef.current || !runtime.ready || staleSelection || unavailableSelection) {
+    if (isSubmittingRef.current || !runtime.ready || !defaultsReady || staleSelection || unavailableSelection) {
       return
     }
 
@@ -1144,12 +1155,20 @@ function ScenarioLaunchForm({
                     className={styles.numberInput}
                     type="number"
                     min={1}
-                    value={maxDatasetSize}
-                    disabled={submitting || scenario.default_run_size.dataset_limit.state === 'not_applicable'}
+                    value={maxDatasetSize === 'all' ? '' : maxDatasetSize}
+                    disabled={submitting || maxDatasetSize === 'all'
+                      || scenario.default_run_size.dataset_limit.state === 'not_applicable'}
                     onChange={(_, data) => setMaxDatasetSize(data.value)}
                     data-testid="max-dataset-size-input"
                   />
                 </Field>
+                <Checkbox
+                  label="No total dataset limit"
+                  checked={maxDatasetSize === 'all'}
+                  disabled={submitting || scenario.default_run_size.dataset_limit.state === 'not_applicable'}
+                  onChange={(_, data) => setMaxDatasetSize(data.checked === true ? 'all' : configuredDefaultMaxDatasetSize)}
+                />
+                <Text size={200}>Per-dataset limits still apply. An empty input uses the scenario default total.</Text>
                 <Field
                   label="Harm categories"
                   hint="Comma-separated values. A seed must match every listed category."
@@ -1272,7 +1291,7 @@ function ScenarioLaunchForm({
                 className={styles.launchButton}
                 appearance="primary"
                 type="submit"
-                disabled={!runtime.ready || staleSelection || unavailableSelection || submitting || techniqueSelectionInvalid}
+                disabled={!runtime.ready || !defaultsReady || staleSelection || unavailableSelection || submitting || techniqueSelectionInvalid}
                 data-testid="launch-scenario-btn"
               >
                 Launch scan
@@ -1392,7 +1411,7 @@ function ScenarioLaunchForm({
                   </Button>
                   <Button
                     appearance="primary"
-                    disabled={submitting}
+                    disabled={submitting || !runtime.ready || !defaultsReady}
                     onClick={() => void handleLaunchConfirmed()}
                     data-testid="confirm-launch-scenario-btn"
                   >
